@@ -20,10 +20,7 @@
 
 #include <dlib/dir_nav.h>
 
-
 const char* VERSION = "1.14";
-
-
 
 using namespace std;
 using namespace dlib;
@@ -31,28 +28,19 @@ using namespace dlib;
 class OpenFileHandler {
 
   std::string filename;
-  std::mutex mtx;
 
 public:
-
-  OpenFileHandler(){
-    this->mtx.lock();
-  }
-
-  std::string getFilename(){
+  std::string getFilename() const {
     return this->filename;
   }
 
-  void handleOpen(const std::string& filename){
+  void setFilename(const std::string& filename) {
     this->filename = filename;
-    this->mtx.unlock();
   }
 
-  void waitReady(){
-    this->mtx.lock();
-    this->mtx.unlock();
+  void handleOpen(const std::string& filename) {
+    this->setFilename(filename);
   }
-
 };
 
 
@@ -1176,11 +1164,20 @@ int main(int argc, char** argv)
             editor.wait_until_closed();
             return EXIT_SUCCESS;
         }
+
         if(parser.number_of_arguments() == 0){
           OpenFileHandler handler;
-          open_file_box(handler, &OpenFileHandler::handleOpen);
-          handler.waitReady();
+          {
+              using namespace open_file_box_helper;
+              box_win* win = new box_win("Open File", true);
+              win->set_click_handler(make_mfp(handler, &OpenFileHandler::handleOpen));
+              win->wait_until_closed();
+          }
+
           std::string filename = handler.getFilename();
+
+          if (filename.empty()) return 0;
+
           if(file_exists(filename)){
             metadata_editor editor(filename);
             editor.wait_until_closed();
