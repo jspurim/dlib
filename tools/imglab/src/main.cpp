@@ -65,7 +65,7 @@ void create_new_dataset_helper(const std::string &filename, const std::vector<st
         {
             cout<<target<<endl;
             cout<<parent_dir<<endl;
-            const string temp = strip_path(target, parent_dir);
+            const string temp = strip_path(file(target), parent_dir);
             cout<<temp<<endl;
             meta.images.push_back(image(temp));
         }
