@@ -25,6 +25,11 @@ const char* VERSION = "1.14";
 using namespace std;
 using namespace dlib;
 
+static bool endsWith(const std::string& str, const std::string& suffix)
+{
+    return str.size() >= suffix.size() && 0 == str.compare(str.size()-suffix.size(), suffix.size(), suffix);
+}
+
 class OpenFileHandler {
 
   std::string filename;
@@ -63,10 +68,7 @@ void create_new_dataset_helper(const std::string &filename, const std::vector<st
     {
         try
         {
-            cout<<target<<endl;
-            cout<<parent_dir<<endl;
             const string temp = strip_path(file(target), parent_dir);
-            cout<<temp<<endl;
             meta.images.push_back(image(temp));
         }
         catch (dlib::file::file_not_found&)
@@ -76,7 +78,6 @@ void create_new_dataset_helper(const std::string &filename, const std::vector<st
             std::vector<file> files = get_files_in_directory_tree(target,
                                                                   match_endings(".png .PNG .jpeg .JPEG .jpg .JPG .bmp .BMP .dng .DNG .gif .GIF"),
                                                                   depth);
-            cout<<files.size()<<endl;
             sort(files.begin(), files.end());
 
             for (unsigned long j = 0; j < files.size(); ++j)
@@ -1177,6 +1178,10 @@ int main(int argc, char** argv)
           std::string filename = handler.getFilename();
 
           if (filename.empty()) return 0;
+          if(!endsWith(filename, ".xml")){
+            message_box_blocking("File error", "The metadata file extension should be xml");
+            return 1;
+          }
 
           if(file_exists(filename)){
             metadata_editor editor(filename);
