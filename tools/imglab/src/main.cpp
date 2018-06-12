@@ -28,41 +28,67 @@ const char* VERSION = "1.14";
 using namespace std;
 using namespace dlib;
 
+class OpenFileHandler {
+
+  std::string filename;
+  std::mutex mtx;
+
+public:
+
+  OpenFileHandler(){
+    this->mtx.lock();
+  }
+
+  std::string getFilename(){
+    return this->filename;
+  }
+
+  void handleOpen(const std::string& filename){
+    this->filename = filename;
+    this->mtx.unlock();
+  }
+
+  void waitReady(){
+    this->mtx.lock();
+    this->mtx.unlock();
+  }
+
+};
+
+
 // ----------------------------------------------------------------------------------------
 
-void create_new_dataset (
-    const command_line_parser& parser
-)
+void create_new_dataset_helper(const std::string &filename, const std::vector<std::string> targets, const unsigned long depth)
 {
     using namespace dlib::image_dataset_metadata;
 
-    const std::string filename = parser.option("c").argument();
     // make sure the file exists so we can use the get_parent_directory() command to
     // figure out it's parent directory.
     make_empty_file(filename);
     const std::string parent_dir = get_parent_directory(file(filename));
 
-    unsigned long depth = 0;
-    if (parser.option("r"))
-        depth = 30;
-
     dataset meta;
     meta.name = "imglab dataset";
     meta.comment = "Created by imglab tool.";
-    for (unsigned long i = 0; i < parser.number_of_arguments(); ++i)
+    cout<<parent_dir<<endl;
+    for (auto target : targets)
     {
         try
         {
-            const string temp = strip_path(file(parser[i]), parent_dir);
+            cout<<target<<endl;
+            cout<<parent_dir<<endl;
+            const string temp = strip_path(target, parent_dir);
+            cout<<temp<<endl;
             meta.images.push_back(image(temp));
         }
         catch (dlib::file::file_not_found&)
         {
             // then parser[i] should be a directory
 
-            std::vector<file> files = get_files_in_directory_tree(parser[i], 
+            std::vector<file> files = get_files_in_directory_tree(target,
                                                                   match_endings(".png .PNG .jpeg .JPEG .jpg .JPG .bmp .BMP .dng .DNG .gif .GIF"),
                                                                   depth);
+            cout<<files.size()<<endl;
             sort(files.begin(), files.end());
 
             for (unsigned long j = 0; j < files.size(); ++j)
@@ -73,6 +99,26 @@ void create_new_dataset (
     }
 
     save_image_dataset_metadata(meta, filename);
+}
+
+void create_new_dataset (
+    const command_line_parser& parser
+)
+{
+    using namespace dlib::image_dataset_metadata;
+
+    const std::string filename = parser.option("c").argument();
+
+    unsigned long depth = 0;
+    if (parser.option("r"))
+        depth = 30;
+
+    std::vector<std::string> targets;
+    for (unsigned long i = 0; i < parser.number_of_arguments(); ++i)
+    {
+        targets.push_back(parser[i]);
+    }
+    create_new_dataset_helper(filename, targets, depth);
 }
 
 // ----------------------------------------------------------------------------------------
@@ -257,7 +303,7 @@ void merge_metadata_files (
 
     // copy merged data into dest
     dest.images.clear();
-    for (std::map<string,image_dataset_metadata::image>::const_iterator i = merged_data.begin(); 
+    for (std::map<string,image_dataset_metadata::image>::const_iterator i = merged_data.begin();
         i != merged_data.end(); ++i)
     {
         dest.images.push_back(i->second);
@@ -321,7 +367,7 @@ void rotate_dataset(const command_line_parser& parser)
             std::map<std::string,point>::iterator k;
             for (k = metadata.images[i].boxes[j].parts.begin(); k != metadata.images[i].boxes[j].parts.end(); ++k)
             {
-                k->second = tran(k->second); 
+                k->second = tran(k->second);
             }
         }
 
@@ -341,7 +387,7 @@ int resample_dataset(const command_line_parser& parser)
         return EXIT_FAILURE;
     }
 
-    const size_t obj_size = get_option(parser,"cropped-object-size",100*100); 
+    const size_t obj_size = get_option(parser,"cropped-object-size",100*100);
     const double margin_scale =  get_option(parser,"crop-size",2.5); // cropped image will be this times wider than the object.
     const unsigned long min_object_size = get_option(parser,"min-object-size",1);
     const bool one_object_per_image = parser.option("one-object-per-image");
@@ -550,7 +596,7 @@ int main(int argc, char** argv)
                                  "image tags from <arg1>.  The results are saved into merged.xml and neither <arg1> or "
                                  "<arg2> files are modified.",2);
         parser.add_option("flip", "Read an XML image dataset from the <arg> XML file and output a left-right flipped "
-                                  "version of the dataset and an accompanying flipped XML file named flipped_<arg>. " 
+                                  "version of the dataset and an accompanying flipped XML file named flipped_<arg>. "
                                   "We also adjust object part labels after flipping so that the new flipped dataset "
                                   "has the same average part layout as the source dataset." ,1);
         parser.add_option("flip-basic", "This option is just like --flip, except we don't adjust any object part labels after flipping. "
@@ -568,19 +614,19 @@ int main(int argc, char** argv)
 
         parser.set_group_name("Cropping sub images");
         parser.add_option("resample", "Crop out images that are centered on each object in the dataset. "
-                                      "The output is a new XML dataset."); 
+                                      "The output is a new XML dataset.");
         parser.add_option("cropped-object-size", "When doing --resample, make the cropped objects contain about <arg> pixels (default 10000).",1);
         parser.add_option("min-object-size", "When doing --resample, skip objects that have fewer than <arg> pixels in them (default 1).",1);
-        parser.add_option("crop-size", "When doing --resample, the entire cropped image will be <arg> times wider than the object (default 2.5).",1); 
+        parser.add_option("crop-size", "When doing --resample, the entire cropped image will be <arg> times wider than the object (default 2.5).",1);
         parser.add_option("one-object-per-image", "When doing --resample, only include one non-ignored object per image (i.e. the central object).");
 
 
 
         parser.parse(argc, argv);
 
-        const char* singles[] = {"h","c","r","l","files","convert","parts","rmdiff", "rmtrunc", "rmdupes", "seed", "shuffle", "split", "add", 
+        const char* singles[] = {"h","c","r","l","files","convert","parts","rmdiff", "rmtrunc", "rmdupes", "seed", "shuffle", "split", "add",
                                  "flip-basic", "flip", "rotate", "tile", "size", "cluster", "resample", "min-object-size", "rmempty",
-                                 "crop-size", "cropped-object-size", "rmlabel", "rm-other-labels", "rm-if-overlaps", "sort-num-objects", 
+                                 "crop-size", "cropped-object-size", "rmlabel", "rm-other-labels", "rm-if-overlaps", "sort-num-objects",
                                  "one-object-per-image", "jpg", "rmignore", "sort"};
         parser.check_one_time_options(singles);
         const char* c_sub_ops[] = {"r", "convert"};
@@ -705,8 +751,8 @@ int main(int argc, char** argv)
 
         if (parser.option("v"))
         {
-            cout << "imglab v" << VERSION 
-                 << "\nCompiled: " << __TIME__ << " " << __DATE__ 
+            cout << "imglab v" << VERSION
+                 << "\nCompiled: " << __TIME__ << " " << __DATE__
                  << "\nWritten by Davis King\n";
             cout << "Check for updates at http://dlib.net\n\n";
             return EXIT_SUCCESS;
@@ -744,7 +790,7 @@ int main(int argc, char** argv)
             }
             return EXIT_SUCCESS;
         }
-        
+
         if (parser.option("rmdiff"))
         {
             if (parser.number_of_arguments() != 1)
@@ -1044,7 +1090,7 @@ int main(int argc, char** argv)
 
             dlib::image_dataset_metadata::dataset data;
             load_image_dataset_metadata(data, parser[0]);
-            std::sort(data.images.rbegin(),  data.images.rend(), 
+            std::sort(data.images.rbegin(),  data.images.rend(),
                 [](const image_dataset_metadata::image& a, const image_dataset_metadata::image& b) { return a.boxes.size() < b.boxes.size(); });
             save_image_dataset_metadata(data, parser[0]);
             return EXIT_SUCCESS;
@@ -1060,7 +1106,7 @@ int main(int argc, char** argv)
 
             dlib::image_dataset_metadata::dataset data;
             load_image_dataset_metadata(data, parser[0]);
-            std::sort(data.images.begin(),  data.images.end(), 
+            std::sort(data.images.begin(),  data.images.end(),
                 [](const image_dataset_metadata::image& a, const image_dataset_metadata::image& b) { return a.filename < b.filename; });
             save_image_dataset_metadata(data, parser[0]);
             return EXIT_SUCCESS;
@@ -1130,7 +1176,27 @@ int main(int argc, char** argv)
             editor.wait_until_closed();
             return EXIT_SUCCESS;
         }
-
+        if(parser.number_of_arguments() == 0){
+          OpenFileHandler handler;
+          open_file_box(handler, &OpenFileHandler::handleOpen);
+          handler.waitReady();
+          std::string filename = handler.getFilename();
+          if(file_exists(filename)){
+            metadata_editor editor(filename);
+            editor.wait_until_closed();
+          } else {
+            make_empty_file(filename);
+            const std::string parent_dir = get_parent_directory(file(filename));
+            std::vector<std::string> targets;
+            targets.push_back(parent_dir);
+            cout<<filename<<endl;
+            cout<<parent_dir<<endl;
+            create_new_dataset_helper(filename, targets, 0);
+            metadata_editor editor(filename);
+            editor.wait_until_closed();
+          }
+          return EXIT_FAILURE;
+        }
         cout << "Invalid command, give -h to see options." << endl;
         return EXIT_FAILURE;
     }
@@ -1142,4 +1208,3 @@ int main(int argc, char** argv)
 }
 
 // ----------------------------------------------------------------------------------------
-
